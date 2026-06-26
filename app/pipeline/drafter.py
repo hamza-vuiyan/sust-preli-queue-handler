@@ -85,19 +85,17 @@ def _draft_wrong_transfer(
     if evidence.evidence_verdict == EvidenceVerdict.CONSISTENT:
         return {
             "agent_summary": (
-                f"Customer reports a wrong transfer of {amount} to {counterparty}. "
-                f"Transaction {tx_ref} matches the claim on both amount and "
-                f"counterparty. Recommend opening a dispute for review."
+                f"Customer reports sending {amount} to {counterparty}. "
+                f"Transaction {tx_ref} matches the claim. Dispute initiated for review."
             ),
             "recommended_next_action": (
-                f"Open dispute case for {tx_ref}; freeze any pending settlement "
-                f"to the counterparty and request callback within 2 hours."
+                f"Verify {tx_ref} details with the customer and initiate "
+                f"the wrong-transfer dispute workflow per policy."
             ),
             "customer_reply": (
-                f"Thanks for reaching out — we found a transfer matching your "
-                f"description (reference {tx_ref}). We will refund you the eligible "
-                f"amount after our dispute team reviews the case. Please do not "
-                f"share your PIN, OTP, or password with anyone while we work on this."
+                f"We have noted your concern about transaction {tx_ref}. "
+                f"Please do not share your PIN or OTP with anyone. "
+                f"Our dispute team will review the case and contact you through official support channels."
             ),
         }
 
@@ -105,16 +103,17 @@ def _draft_wrong_transfer(
         return {
             "agent_summary": (
                 f"Customer claims a wrong transfer to {counterparty}, but history "
-                f"shows multiple prior successful transfers to the same counterparty. "
-                f"Treat the claim with caution."
+                f"shows multiple prior transfers to the same counterparty. "
+                f"Evidence is inconsistent — flag for human review."
             ),
             "recommended_next_action": (
-                "Verify the customer's identity with two security questions "
-                "before processing any reversal."
+                "Flag for human review. Verify with the customer whether this was genuinely "
+                "a wrong transfer given the established transaction pattern with this recipient."
             ),
             "customer_reply": (
-                "Thanks for getting in touch. We've flagged your case for manual "
-                "review and will get back to you within one business day."
+                f"We have received your request regarding the recent transaction. "
+                f"Please do not share your PIN or OTP with anyone. "
+                f"Our dispute team will review the case carefully and contact you through official support channels."
             ),
         }
 
@@ -122,15 +121,15 @@ def _draft_wrong_transfer(
     return {
         "agent_summary": (
             f"Customer claims a wrong transfer of {amount} to {counterparty}, "
-            f"but we could not confirm a unique matching transaction."
+            f"but we could not confirm a unique matching transaction in the provided history."
         ),
         "recommended_next_action": (
-            "Ask the customer for the exact transaction id or timestamp."
+            "Reply to customer asking for the exact transaction ID or timestamp."
         ),
         "customer_reply": (
-            "Thanks for reaching out. To help us locate the transfer quickly, "
-            "please reply with the exact transaction reference from your app "
-            "or the time and date of the transfer."
+            "Thank you for reaching out. To help us locate the transfer quickly, "
+            "please share the transaction ID or the exact time and date. "
+            "Please do not share your PIN or OTP with anyone."
         ),
     }
 
@@ -146,13 +145,14 @@ def _draft_phishing(
             "Treat as CRITICAL — escalate to fraud_risk immediately."
         ),
         "recommended_next_action": (
-            "Lock outgoing transfers on the account for 24h, raise a fraud-risk "
-            "ticket, and call the customer on their registered number to confirm."
+            "Escalate to fraud_risk team immediately. Confirm to customer that the company never asks for OTP. "
+            "Log the reported number for fraud pattern analysis."
         ),
         "customer_reply": (
-            "Thank you for flagging this. We will never ask for your PIN, OTP, "
-            "or password over the phone or by message. Our team will contact you "
-            "through our official channels to help secure your account."
+            "Thank you for reaching out before sharing any information. "
+            "We never ask for your PIN, OTP, or password under any circumstances. "
+            "Please do not share these with anyone, even if they claim to be from us. "
+            "Our fraud team has been notified of this incident."
         ),
     }
 
@@ -166,24 +166,34 @@ def _draft_payment_failed(
 
     if evidence.evidence_verdict == EvidenceVerdict.CONSISTENT:
         agent_summary = (
-            f"Customer reports a payment that they believe failed. "
+            f"Customer reports a payment that they believe failed, but balance was deducted. "
             f"Transaction {tx_ref} matches the claim. Recommend reconciliation."
         )
-        next_action = f"Trigger a reconciliation sweep for {tx_ref} and confirm receipt."
+        next_action = (
+            f"Investigate {tx_ref} ledger status. If balance was deducted on a failed payment, "
+            f"initiate the automatic reversal flow within standard SLA."
+        )
+        customer_reply = (
+            f"We have noted that transaction {tx_ref} may have caused an unexpected balance deduction. "
+            f"Our payments team will review the case and any eligible amount will be returned "
+            f"through official channels. Please do not share your PIN or OTP with anyone."
+        )
     else:
         agent_summary = (
-            "Customer reports a payment failure. No matching successful "
+            "Customer reports a payment failure. No matching failed "
             "transaction found in the supplied history."
         )
         next_action = "Pull the gateway-level status for the most recent transaction."
+        customer_reply = (
+            "Thank you for reaching out. We are checking the payment status and "
+            "will update you as soon as we have confirmation. "
+            "Please do not share your PIN or OTP with anyone."
+        )
 
     return {
         "agent_summary": agent_summary,
         "recommended_next_action": next_action,
-        "customer_reply": (
-            "Thanks for letting us know. We're checking the transaction now and "
-            "will update you as soon as we have confirmation."
-        ),
+        "customer_reply": customer_reply,
     }
 
 
@@ -192,16 +202,20 @@ def _draft_refund_request(
     evidence: EvidenceVerdictResult,
     severity: Severity,
 ) -> Dict[str, str]:
+    tx_ref = evidence.relevant_transaction_id or "the transaction"
     return {
         "agent_summary": (
-            "Customer is requesting a refund. Forward to customer_support for manual review."
+            f"Customer requests refund of payment ({tx_ref}) due to change of mind or dissatisfaction. Not a service failure."
         ),
         "recommended_next_action": (
-            "Verify the original transaction and the merchant's refund policy."
+            "Inform the customer that refund eligibility depends on the merchant's own policy. "
+            "Provide guidance on contacting the merchant directly for a refund."
         ),
         "customer_reply": (
-            "Thanks for reaching out. We've recorded your refund request and our "
-            "team will review the case and follow up with the outcome."
+            "Thank you for reaching out. Refunds for completed payments depend on the merchant's own policy. "
+            "We recommend contacting the merchant directly. "
+            "If you need help reaching them, please reply and we will guide you. "
+            "Please do not share your PIN or OTP with anyone."
         ),
     }
 
@@ -211,17 +225,20 @@ def _draft_duplicate_payment(
     evidence: EvidenceVerdictResult,
     severity: Severity,
 ) -> Dict[str, str]:
+    tx_ref = evidence.relevant_transaction_id or "the transaction"
     return {
         "agent_summary": (
-            "Customer reports being charged twice for the same transaction. "
-            "Verify duplicate id before processing a reversal."
+            f"Customer reports a possible duplicate payment. Transaction {tx_ref} is suspected duplicate. "
+            "Verify with payments_ops before processing any reversal."
         ),
         "recommended_next_action": (
-            "Compare gateway and ledger records for the disputed window."
+            f"Verify the duplicate with payments_ops. If the biller confirms only one payment was received, "
+            f"initiate reversal of {tx_ref}."
         ),
         "customer_reply": (
-            "Thanks for getting in touch. We're checking for any duplicate "
-            "charges and will update you shortly."
+            f"We have noted the possible duplicate payment for transaction {tx_ref}. "
+            f"Our payments team will verify with the biller and any eligible amount will be returned "
+            f"through official channels. Please do not share your PIN or OTP with anyone."
         ),
     }
 
@@ -251,17 +268,20 @@ def _draft_agent_cashin(
     evidence: EvidenceVerdictResult,
     severity: Severity,
 ) -> Dict[str, str]:
+    tx_ref = evidence.relevant_transaction_id or "the transaction"
     return {
         "agent_summary": (
-            "Customer reports an issue with an agent cash-in. Route to "
-            "agent_operations for on-the-ground follow-up."
+            f"Customer reports agent cash-in ({tx_ref}) not reflected in balance. "
+            "Route to agent_operations for on-the-ground follow-up."
         ),
         "recommended_next_action": (
-            "Verify the agent's cash-in ledger and contact the agent within 1h."
+            f"Investigate {tx_ref} pending status with agent operations. "
+            "Confirm settlement state and resolve within the standard cash-in SLA."
         ),
         "customer_reply": (
-            "Thanks for letting us know. We've passed this to our agent "
-            "operations team and they will reach out shortly."
+            f"We have noted your concern about the cash-in transaction. "
+            f"Our agent operations team will investigate and contact you through official channels. "
+            f"Please do not share your PIN or OTP with anyone."
         ),
     }
 
@@ -273,12 +293,15 @@ def _draft_other(
 ) -> Dict[str, str]:
     return {
         "agent_summary": (
-            "Customer complaint did not match a known case type. Manual review required."
+            "Customer complaint did not match a specific case type. Insufficient detail — manual review required."
         ),
-        "recommended_next_action": "Assign to customer_support tier-2 for triage.",
+        "recommended_next_action": (
+            "Reply to customer asking for specific details: which transaction, what amount, what went wrong, and approximate time."
+        ),
         "customer_reply": (
-            "Thanks for reaching out. We've received your message and a "
-            "specialist will follow up shortly."
+            "Thank you for reaching out. To help you faster, please share the transaction ID, "
+            "the amount involved, and a short description of what went wrong. "
+            "Please do not share your PIN or OTP with anyone."
         ),
     }
 
