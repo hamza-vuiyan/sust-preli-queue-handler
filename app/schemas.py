@@ -7,18 +7,25 @@ Why this lives in its own module:
 - Centralizes the *exact* contract the API promises to clients.
 - Keeps enum strings identical to the spec so the validator never has to
   guess whether "WrongTransfer" should map to "wrong_transfer".
-- Used by both `app.main` (validation) and `app.logic` (typing).
+- Used by both `app.main` (validation) and `app.pipeline` (typing).
 
 NOTE: enum string values are part of the public API. Do NOT rename them.
+
+Field-name flexibility
+----------------------
+The request model accepts both the canonical names AND common real-world
+aliases (e.g. `complaint` == `complaint_text`). Extra / unknown fields
+from the caller are silently ignored so clients can send richer payloads
+(ticket_id, language, channel, campaign_context, …) without breaking.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -80,26 +87,73 @@ class TransactionStatus(str, Enum):
 # Input models
 # ---------------------------------------------------------------------------
 
+# Aliases that real-world clients send for TransactionStatus values.
+_STATUS_ALIASES: Dict[str, str] = {
+    "completed":  "success",
+    "succeed":    "success",
+    "successful": "success",
+    "done":       "success",
+    "ok":         "success",
+    "error":      "failed",
+    "fail":       "failed",
+    "failure":    "failed",
+    "declined":   "failed",
+    "cancelled":  "reversed",
+    "canceled":   "reversed",
+    "refunded":   "reversed",
+    "in_progress": "pending",
+    "processing": "pending",
+}
+
 
 class Transaction(BaseModel):
     """One element of the customer-supplied transaction_history array."""
 
-    model_config = ConfigDict(extra="forbid")
+    # extra="ignore" — callers may include extra metadata fields; we just
+    # don't need them in the rule engine.
+    model_config = ConfigDict(extra="ignore")
 
     transaction_id: str = Field(..., min_length=1, description="Unique transaction id.")
     amount: float = Field(..., ge=0, description="Transaction amount in `currency`.")
-    currency: str = Field(..., min_length=3, max_length=3, description="ISO 4217 currency code.")
+    currency: str = Field(
+        default="BDT",
+        min_length=3,
+        max_length=3,
+        description="ISO 4217 currency code. Defaults to 'BDT' if omitted.",
+    )
     counterparty: str = Field(..., min_length=1, description="Receiver identifier.")
     timestamp: datetime = Field(..., description="ISO 8601 timestamp of the transaction.")
     status: TransactionStatus = Field(..., description="Reported status of the transaction.")
     channel: Optional[str] = Field(default=None, description="Optional channel, e.g. 'mobile_app'.")
     type: Optional[str] = Field(default=None, description="Optional type, e.g. 'transfer'.")
 
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalise_status(cls, v: Any) -> Any:
+        """Map common real-world status strings to canonical enum values.
+
+        e.g. "completed" → "success", "cancelled" → "reversed".
+        Unknown values are passed through and will fail normal enum validation
+        with a clear error message.
+        """
+        if isinstance(v, str):
+            return _STATUS_ALIASES.get(v.lower().strip(), v)
+        return v
+
 
 class AnalyzeTicketRequest(BaseModel):
-    """Request payload for POST /analyze-ticket."""
+    """Request payload for POST /analyze-ticket.
 
-    model_config = ConfigDict(extra="forbid")
+    Accepts both canonical field names AND common aliases:
+      - `complaint_text`  OR  `complaint`
+      - `customer_id`     is optional (defaults to "unknown")
+
+    Unknown extra fields (ticket_id, language, channel, campaign_context, …)
+    are silently ignored so richer upstream payloads work without changes.
+    """
+
+    # extra="ignore" — accept richer payloads from real-world clients.
+    model_config = ConfigDict(extra="ignore")
 
     complaint_text: str = Field(
         ...,
@@ -107,12 +161,34 @@ class AnalyzeTicketRequest(BaseModel):
         max_length=4000,
         description="Free-text customer complaint.",
     )
-    customer_id: str = Field(..., min_length=1, description="Internal customer identifier.")
+    customer_id: str = Field(
+        default="unknown",
+        description="Internal customer identifier. Optional — defaults to 'unknown'.",
+    )
     transaction_history: List[Transaction] = Field(
         ...,
         max_length=500,
         description="Recent transactions to cross-reference against the complaint.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def remap_aliases(cls, data: Any) -> Any:
+        """Handle field-name aliases before Pydantic validates individual fields.
+
+        Mappings applied (only when the canonical name is absent):
+          complaint        → complaint_text
+          complaint_text   (canonical, used as-is)
+        """
+        if not isinstance(data, dict):
+            return data
+
+        # Map `complaint` → `complaint_text` when only the alias is present.
+        if "complaint_text" not in data and "complaint" in data:
+            data = dict(data)          # don't mutate the original
+            data["complaint_text"] = data.pop("complaint")
+
+        return data
 
 
 # ---------------------------------------------------------------------------
