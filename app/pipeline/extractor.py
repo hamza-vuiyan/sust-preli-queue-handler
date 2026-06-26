@@ -130,6 +130,27 @@ def call_llm_extractor(complaint_text: str) -> Dict[str, Any]:
 # Gemini path
 # ===========================================================================
 
+# Generic phrases Gemini sometimes returns as claimed_counterparty that are
+# NOT real identifiers. We null these out so the evidence engine uses
+# amount-only matching rather than failing a counterparty comparison.
+_GENERIC_COUNTERPARTY_PHRASES = frozenset({
+    "wrong number", "wrong person", "unknown", "unknown number",
+    "n/a", "na", "none", "null", "not specified", "not mentioned",
+    "unspecified", "unclear", "unknown recipient", "wrong recipient",
+})
+
+
+def _normalise_counterparty(raw: object) -> Optional[str]:
+    """Return a clean counterparty string, or None if it's generic/empty."""
+    if not isinstance(raw, str):
+        return None
+    cleaned = raw.strip()
+    if not cleaned:
+        return None
+    if cleaned.lower() in _GENERIC_COUNTERPARTY_PHRASES:
+        return None
+    return cleaned
+
 
 def _call_gemini_extractor(complaint_text: str, client: Any) -> Dict[str, Any]:
     """Call the configured Gemini model and parse the strict JSON response.
@@ -170,12 +191,9 @@ def _call_gemini_extractor(complaint_text: str, client: Any) -> Dict[str, Any]:
         except (TypeError, ValueError):
             claimed_amount = None
 
-    counterparty_raw = parsed.get("claimed_counterparty")
-    claimed_counterparty: Optional[str]
-    if isinstance(counterparty_raw, str) and counterparty_raw.strip():
-        claimed_counterparty = counterparty_raw.strip()
-    else:
-        claimed_counterparty = None
+    # Use _normalise_counterparty to reject generic phrases like "wrong number"
+    # that Gemini sometimes returns when the complaint doesn't name a real recipient.
+    claimed_counterparty = _normalise_counterparty(parsed.get("claimed_counterparty"))
 
     return {
         "claimed_amount": claimed_amount,
@@ -183,6 +201,7 @@ def _call_gemini_extractor(complaint_text: str, client: Any) -> Dict[str, Any]:
         "core_issue": core_issue,
         "raw_excerpt": complaint_text.strip()[:120],
     }
+
 
 
 # ===========================================================================

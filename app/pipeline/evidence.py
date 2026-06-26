@@ -43,8 +43,9 @@ DEFAULT_TIME_WINDOW_SECONDS: int = 24 * 60 * 60  # 24h
 WRONG_TRANSFER_CONTRADICTION_THRESHOLD: int = 2
 
 # Confidence scores returned to the API.
-CONFIDENCE_PERFECT_MATCH: float = 0.95
-CONFIDENCE_PARTIAL_MATCH: float = 0.6
+CONFIDENCE_PERFECT_MATCH: float = 0.95    # amount + counterparty both match
+CONFIDENCE_AMOUNT_ONLY_MATCH: float = 0.80 # amount matches, counterparty not specified
+CONFIDENCE_PARTIAL_MATCH: float = 0.6     # amount matches, counterparty mismatch
 CONFIDENCE_AMBIGUOUS: float = 0.4
 CONFIDENCE_INSUFFICIENT: float = 0.2
 CONFIDENCE_CONTRADICTION: float = 0.85
@@ -103,26 +104,32 @@ def evaluate_evidence(
             confidence=CONFIDENCE_INSUFFICIENT,
         )
 
-    # Score every transaction.
-    # Strong match: amount AND counterparty agree (within tolerance).
-    # Weak match:   amount agrees but counterparty doesn't / is absent.
+    # When no counterparty was extractable from the complaint (Gemini returns
+    # null, stub extracts a generic word like "number"), amount-matching
+    # transactions are the best signal we have — treat them as strong matches.
+    # The confidence is capped below CONFIDENCE_PERFECT_MATCH to reflect that
+    # we couldn't verify the recipient.
+    counterparty_unspecified = claimed_counterparty is None
+
     strong_matches: List[Transaction] = []
-    weak_matches: List[Transaction] = []
+    weak_matches: List[Transaction] = []   # only populated when counterparty IS specified
 
     for tx in transaction_history:
         amount_ok = abs(tx.amount - claimed_amount) <= AMOUNT_TOLERANCE
-        party_ok = (
-            claimed_counterparty is not None
-            and claimed_counterparty in tx.counterparty.lower()
-        ) or (
-            claimed_counterparty is not None
-            and tx.counterparty.lower() in claimed_counterparty
-        )
 
-        if amount_ok and party_ok:
-            strong_matches.append(tx)
-        elif amount_ok:
-            weak_matches.append(tx)
+        if counterparty_unspecified:
+            # No counterparty to compare — amount match alone is the signal.
+            if amount_ok:
+                strong_matches.append(tx)
+        else:
+            party_ok = (
+                claimed_counterparty in tx.counterparty.lower()
+                or tx.counterparty.lower() in claimed_counterparty
+            )
+            if amount_ok and party_ok:
+                strong_matches.append(tx)
+            elif amount_ok:
+                weak_matches.append(tx)
 
     # Rules 4 + 5: multiple strong matches.
     if len(strong_matches) >= 2:
@@ -166,10 +173,18 @@ def evaluate_evidence(
                     relevant_transaction_id=tx.transaction_id,
                     confidence=CONFIDENCE_CONTRADICTION,
                 )
+        # Use a lower confidence when the match is amount-only (no counterparty
+        # was extracted from the complaint) to reflect that we couldn't verify
+        # the recipient independently.
+        confidence = (
+            CONFIDENCE_AMOUNT_ONLY_MATCH
+            if counterparty_unspecified
+            else CONFIDENCE_PERFECT_MATCH
+        )
         return EvidenceVerdictResult(
             evidence_verdict=EvidenceVerdict.CONSISTENT,
             relevant_transaction_id=tx.transaction_id,
-            confidence=CONFIDENCE_PERFECT_MATCH,
+            confidence=confidence,
         )
 
     # Rule 6: weak matches only.

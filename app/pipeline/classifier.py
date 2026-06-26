@@ -8,7 +8,7 @@ All logic is pure Python lookups and comparisons — no I/O or LLM involved.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from app.schemas import CaseType, Department, EvidenceVerdict, Severity
 from app.pipeline.evidence import EvidenceVerdictResult
@@ -110,3 +110,70 @@ def _escalate(level: Severity) -> Severity:
     except ValueError:
         return level
     return order[min(idx + 1, len(order) - 1)]
+
+
+# ===========================================================================
+# Human-review flag
+# ===========================================================================
+
+# Case types that always require a human to review regardless of verdict.
+_ALWAYS_HUMAN_REVIEW: frozenset = frozenset({
+    CaseType.PHISHING_OR_SOCIAL_ENGINEERING,
+    CaseType.WRONG_TRANSFER,
+    CaseType.DUPLICATE_PAYMENT,
+})
+
+
+def compute_human_review_required(
+    case_type: CaseType,
+    evidence: EvidenceVerdictResult,
+    severity: Severity,
+) -> bool:
+    """Return True when the case should be routed to a human agent.
+
+    Rules (any one is sufficient):
+      - Case type is always-review (phishing, wrong_transfer, duplicate_payment)
+      - Evidence is INCONSISTENT (potential fraud, needs investigation)
+      - Severity is HIGH or CRITICAL
+    """
+    if case_type in _ALWAYS_HUMAN_REVIEW:
+        return True
+    if evidence.evidence_verdict == EvidenceVerdict.INCONSISTENT:
+        return True
+    if severity in (Severity.HIGH, Severity.CRITICAL):
+        return True
+    return False
+
+
+# ===========================================================================
+# Reason codes
+# ===========================================================================
+
+
+def compute_reason_codes(
+    case_type: CaseType,
+    evidence: EvidenceVerdictResult,
+) -> List[str]:
+    """Build a human-readable list of codes explaining the pipeline decision.
+
+    The first code is always the case_type value. Additional codes reflect
+    the evidence verdict and confidence tier.
+    """
+    codes: List[str] = [case_type.value]
+
+    if evidence.evidence_verdict == EvidenceVerdict.CONSISTENT:
+        codes.append("transaction_match")
+    elif evidence.evidence_verdict == EvidenceVerdict.INCONSISTENT:
+        codes.append("inconsistent_history")
+    else:
+        codes.append("insufficient_data")
+
+    if evidence.confidence >= 0.9:
+        codes.append("high_confidence")
+    elif evidence.confidence >= 0.7:
+        codes.append("medium_confidence")
+
+    if evidence.relevant_transaction_id:
+        codes.append("transaction_identified")
+
+    return codes

@@ -29,10 +29,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.pipeline import init_llm_client, run_pipeline
+from app.pipeline.classifier import compute_human_review_required, compute_reason_codes
 from app.safety import apply_safety_guardrails
 from app.schemas import (
     AnalyzeTicketRequest,
     AnalyzeTicketResponse,
+    EvidenceVerdict,
     SafeErrorResponse,
 )
 
@@ -116,16 +118,25 @@ async def analyze_ticket(payload: AnalyzeTicketRequest) -> AnalyzeTicketResponse
             drafted["customer_reply"]
         )
 
+        # --- Decision metadata -----------------------------------------------
+        human_review_required = compute_human_review_required(case_type, evidence, severity)
+        reason_codes = compute_reason_codes(case_type, evidence)
+
         elapsed_ms = (time.perf_counter() - started) * 1000.0
 
         return AnalyzeTicketResponse(
+            ticket_id=payload.ticket_id,
             case_type=case_type,
             severity=severity,
             department=department,
-            evidence=evidence,
+            evidence_verdict=evidence.evidence_verdict,
+            relevant_transaction_id=evidence.relevant_transaction_id,
+            confidence=evidence.confidence,
             agent_summary=drafted["agent_summary"],
             recommended_next_action=drafted["recommended_next_action"],
             customer_reply=cleaned_reply,
+            human_review_required=human_review_required,
+            reason_codes=reason_codes,
             guardrails_applied=guardrails_applied,
             processing_time_ms=round(elapsed_ms, 2),
         )

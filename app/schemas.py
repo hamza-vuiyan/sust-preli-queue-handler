@@ -147,14 +147,19 @@ class AnalyzeTicketRequest(BaseModel):
     Accepts both canonical field names AND common aliases:
       - `complaint_text`  OR  `complaint`
       - `customer_id`     is optional (defaults to "unknown")
+      - `ticket_id`       is optional, echoed back in the response
 
-    Unknown extra fields (ticket_id, language, channel, campaign_context, …)
+    Unknown extra fields (language, channel, campaign_context, …)
     are silently ignored so richer upstream payloads work without changes.
     """
 
     # extra="ignore" — accept richer payloads from real-world clients.
     model_config = ConfigDict(extra="ignore")
 
+    ticket_id: Optional[str] = Field(
+        default=None,
+        description="Optional ticket identifier, echoed back in the response.",
+    )
     complaint_text: str = Field(
         ...,
         min_length=1,
@@ -215,17 +220,52 @@ class EvidenceVerdictResult(BaseModel):
 
 
 class AnalyzeTicketResponse(BaseModel):
-    """Response payload for POST /analyze-ticket."""
+    """Response payload for POST /analyze-ticket.
+
+    Fields are flat (no nested evidence object) to match the organizer spec.
+    Evidence verdict, relevant transaction, and confidence are top-level.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
+    # --- Identification ---------------------------------------------------
+    ticket_id: Optional[str] = Field(
+        default=None,
+        description="Echoed from the request ticket_id, if provided.",
+    )
+
+    # --- Classification ---------------------------------------------------
     case_type: CaseType
     severity: Severity
     department: Department
-    evidence: EvidenceVerdictResult
+
+    # --- Evidence (flat) --------------------------------------------------
+    evidence_verdict: EvidenceVerdict
+    relevant_transaction_id: Optional[str] = Field(
+        default=None,
+        description="Best-matching transaction id, or None if not found.",
+    )
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Rule-engine confidence score in [0, 1].",
+    )
+
+    # --- Response content -------------------------------------------------
     agent_summary: str
     recommended_next_action: str
     customer_reply: str
+
+    # --- Decision metadata ------------------------------------------------
+    human_review_required: bool = Field(
+        default=False,
+        description="True when the case must be reviewed by a human agent.",
+    )
+    reason_codes: List[str] = Field(
+        default_factory=list,
+        description="Machine-readable codes explaining the pipeline decision.",
+    )
     guardrails_applied: List[str] = Field(
         default_factory=list,
         description="Audit trail of safety rules the reply was scrubbed through.",
