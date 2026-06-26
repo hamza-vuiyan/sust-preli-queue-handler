@@ -109,8 +109,9 @@ async def analyze_ticket(payload: AnalyzeTicketRequest) -> AnalyzeTicketResponse
     try:
         # --- Step A + B + C --------------------------------------------------
         extracted, evidence, case_type, department, severity, drafted = run_pipeline(
-            payload.complaint_text,
+            payload.complaint,
             payload.transaction_history,
+            payload.language,
         )
 
         # --- Outbound safety guardrails (mandatory) --------------------------
@@ -137,8 +138,6 @@ async def analyze_ticket(payload: AnalyzeTicketRequest) -> AnalyzeTicketResponse
             customer_reply=cleaned_reply,
             human_review_required=human_review_required,
             reason_codes=reason_codes,
-            guardrails_applied=guardrails_applied,
-            processing_time_ms=round(elapsed_ms, 2),
         )
     except HTTPException:
         # Re-raise so FastAPI's HTTPException handler sees it.

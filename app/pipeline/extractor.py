@@ -47,7 +47,9 @@ _GEMINI_SYSTEM_INSTRUCTION = (
     f"`core_issue` MUST be one of: {list(_CANONICAL_CORE_ISSUES)}. "
     "If the complaint mentions a phishing/social-engineering attempt "
     "(asked for OTP/PIN/password, fake support call, impersonation), set "
-    "`core_issue` to `phishing_or_social_engineering` and leave amount/counterparty null."
+    "`core_issue` to `phishing_or_social_engineering` and leave amount/counterparty null. "
+    "IMPORTANT: For `claimed_counterparty`, only extract the ACTUAL recipient the money went to. "
+    "DO NOT extract the 'intended' or 'supposed to be' recipient. If the actual wrong recipient is not explicitly stated, return null."
 )
 
 # ---------------------------------------------------------------------------
@@ -73,7 +75,7 @@ _PHISHING_KEYWORDS = (
     "otp", "pin", "password", "phish", "social engineering",
     "fake call", "pretended to be", "asked for my", "verify your",
 )
-_WRONG_TRANSFER_KEYWORDS   = ("wrong number", "wrong transfer", "wrong person", "mistakenly", "by mistake")
+_WRONG_TRANSFER_KEYWORDS   = ("wrong number", "wrong transfer", "wrong person", "mistakenly", "by mistake", "didn't get it", "did not get it")
 _DUPLICATE_KEYWORDS        = ("twice", "two times", "duplicate", "charged twice", "double charged")
 _PAYMENT_FAILED_KEYWORDS   = ("payment failed", "didn't go through", "did not go through", "not received", "money debited")
 _REFUND_KEYWORDS           = ("refund", "return my money", "reimburse", "money back")
@@ -140,16 +142,23 @@ _GENERIC_COUNTERPARTY_PHRASES = frozenset({
 })
 
 
-def _normalise_counterparty(raw: object) -> Optional[str]:
-    """Return a clean counterparty string, or None if it's generic/empty."""
-    if not isinstance(raw, str):
+def _normalise_counterparty(cp: Optional[str]) -> Optional[str]:
+    """Scrub generic LLM hallucinated counterparties."""
+    if not cp:
         return None
-    cleaned = raw.strip()
-    if not cleaned:
+    c = cp.lower().strip()
+    
+    # Exact matches for generic terms
+    if c in ("unknown", "unspecified", "someone", "merchant"):
         return None
-    if cleaned.lower() in _GENERIC_COUNTERPARTY_PHRASES:
+        
+    # Substring matches for "wrong person", "wrong number", etc.
+    if "wrong number" in c or "wrong person" in c or "wrong recipient" in c or "the recipient" in c:
         return None
-    return cleaned
+        
+    if c in _GENERIC_COUNTERPARTY_PHRASES:
+        return None
+    return cp.strip()
 
 
 def _call_gemini_extractor(complaint_text: str, client: Any) -> Dict[str, Any]:

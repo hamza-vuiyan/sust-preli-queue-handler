@@ -65,28 +65,34 @@ def compute_severity(case_type: CaseType, evidence: EvidenceVerdictResult) -> Se
 
     Rules (in priority order):
       1. Phishing                           → always CRITICAL
-      2. INCONSISTENT evidence              → escalate base severity one tier
-      3. payment_failed + CONSISTENT        → HIGH
-      4. wrong_transfer or payment_failed   → base is HIGH
-      5. OTHER + INSUFFICIENT_DATA          → LOW
-      6. Default                            → MEDIUM
+      2. wrong_transfer + INCONSISTENT      → MEDIUM
+      3. INCONSISTENT evidence              → escalate base severity one tier
+      4. wrong_transfer, payment_failed,
+         duplicate_payment                  → base is HIGH
+      5. agent_cash_in_issue + CONSISTENT   → base is HIGH
+      6. OTHER + INSUFFICIENT_DATA          → LOW
+      7. Default                            → MEDIUM
     """
     if case_type == CaseType.PHISHING_OR_SOCIAL_ENGINEERING:
         return Severity.CRITICAL
 
+    if case_type == CaseType.WRONG_TRANSFER and evidence.evidence_verdict == EvidenceVerdict.INCONSISTENT:
+        return Severity.MEDIUM
+
     base = Severity.MEDIUM
 
-    if case_type in (CaseType.WRONG_TRANSFER, CaseType.PAYMENT_FAILED):
+    if case_type in (
+        CaseType.WRONG_TRANSFER,
+        CaseType.PAYMENT_FAILED,
+        CaseType.DUPLICATE_PAYMENT,
+    ):
+        base = Severity.HIGH
+
+    if case_type == CaseType.AGENT_CASH_IN_ISSUE and evidence.evidence_verdict == EvidenceVerdict.CONSISTENT:
         base = Severity.HIGH
 
     if evidence.evidence_verdict == EvidenceVerdict.INCONSISTENT:
         return _escalate(base)
-
-    if (
-        case_type == CaseType.PAYMENT_FAILED
-        and evidence.evidence_verdict == EvidenceVerdict.CONSISTENT
-    ):
-        return Severity.HIGH
 
     if (
         case_type == CaseType.OTHER
@@ -134,13 +140,13 @@ def compute_human_review_required(
     Rules (any one is sufficient):
       - Case type is always-review (phishing, wrong_transfer, duplicate_payment)
       - Evidence is INCONSISTENT (potential fraud, needs investigation)
-      - Severity is HIGH or CRITICAL
+      - Severity is HIGH or CRITICAL (except for payment_failed which is automated)
     """
     if case_type in _ALWAYS_HUMAN_REVIEW:
         return True
     if evidence.evidence_verdict == EvidenceVerdict.INCONSISTENT:
         return True
-    if severity in (Severity.HIGH, Severity.CRITICAL):
+    if severity in (Severity.HIGH, Severity.CRITICAL) and case_type != CaseType.PAYMENT_FAILED:
         return True
     return False
 

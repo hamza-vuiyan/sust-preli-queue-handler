@@ -36,3 +36,5 @@ htmlcov/
 
 # --- Deprecated / typo files ---------------------------------------------
 varcel.json
+
+pdfs/

@@ -18,6 +18,7 @@ from typing import Any, Dict
 
 from app.schemas import CaseType, EvidenceVerdict, Severity
 from app.pipeline.evidence import EvidenceVerdictResult
+from app.pipeline.client import get_llm_client, get_gemini_model
 
 logger = logging.getLogger("queuestorm.pipeline.drafter")
 
@@ -32,10 +33,39 @@ def draft_response(
     evidence: EvidenceVerdictResult,
     case_type: CaseType,
     severity: Severity,
+    language: Optional[str] = None,
 ) -> Dict[str, str]:
     """Dispatch to the correct drafter and return the three reply fields."""
     handler = _DRAFTERS.get(case_type, _draft_other)
-    return handler(extracted, evidence, severity)
+    result = handler(extracted, evidence, severity)
+    
+    if language in ("bn", "mixed"):
+        result["customer_reply"] = _translate_to_bangla(result["customer_reply"])
+        
+    return result
+
+def _translate_to_bangla(english_text: str) -> str:
+    client = get_llm_client()
+    if not client:
+        return english_text
+        
+    from google.genai import types  # type: ignore
+    try:
+        response = client.models.generate_content(
+            model=get_gemini_model(),
+            contents=f"Translate the following customer support reply to formal Bangla. Maintain the exact same meaning, especially regarding safety (do not promise refunds if not promised, keep warnings about OTP/PIN). Only output the translated text, no markdown or extra commentary.\n\n{english_text}",
+            config=types.GenerateContentConfig(
+                temperature=0.0,
+                max_output_tokens=256,
+            ),
+        )
+        translated = (getattr(response, "text", "") or "").strip()
+        if translated:
+            return translated
+    except Exception as e:
+        logger.warning("Translation to Bangla failed: %s", e)
+    
+    return english_text
 
 
 # ===========================================================================

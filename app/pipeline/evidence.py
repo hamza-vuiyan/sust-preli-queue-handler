@@ -135,9 +135,18 @@ def evaluate_evidence(
     if len(strong_matches) >= 2:
         counterparties = {tx.counterparty.lower() for tx in strong_matches}
         if len(counterparties) == 1:
+            most_recent = _pick_most_recent(strong_matches)
+            # If the user is claiming a duplicate payment, finding multiple identical
+            # transactions to the same counterparty is exactly what we expect.
+            if extracted.get("core_issue") == "duplicate_payment":
+                return EvidenceVerdictResult(
+                    evidence_verdict=EvidenceVerdict.CONSISTENT,
+                    relevant_transaction_id=most_recent.transaction_id,
+                    confidence=CONFIDENCE_PERFECT_MATCH,
+                )
+
             # All matches share the same counterparty — check contradiction rule.
             if extracted.get("core_issue") == "wrong_transfer" and claimed_counterparty:
-                most_recent = _pick_most_recent(strong_matches)
                 prior_successes = _count_prior_successes(
                     most_recent, claimed_counterparty, transaction_history
                 )
@@ -228,7 +237,7 @@ def _count_prior_successes(
             continue
         if tx.timestamp >= match.timestamp:
             continue
-        if tx.status != TransactionStatus.SUCCESS:
+        if tx.status != TransactionStatus.COMPLETED:
             continue
         if claimed_counterparty_lower in tx.counterparty.lower():
             count += 1

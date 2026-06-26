@@ -77,7 +77,7 @@ class Department(str, Enum):
 # Status enum is internal-only (transaction statuses are not part of the
 # public response), but we expose it as an Enum so the schema stays tight.
 class TransactionStatus(str, Enum):
-    SUCCESS = "success"
+    COMPLETED = "completed"
     FAILED = "failed"
     PENDING = "pending"
     REVERSED = "reversed"
@@ -89,11 +89,11 @@ class TransactionStatus(str, Enum):
 
 # Aliases that real-world clients send for TransactionStatus values.
 _STATUS_ALIASES: Dict[str, str] = {
-    "completed":  "success",
-    "succeed":    "success",
-    "successful": "success",
-    "done":       "success",
-    "ok":         "success",
+    "success":    "completed",
+    "succeed":    "completed",
+    "successful": "completed",
+    "done":       "completed",
+    "ok":         "completed",
     "error":      "failed",
     "fail":       "failed",
     "failure":    "failed",
@@ -145,11 +145,12 @@ class AnalyzeTicketRequest(BaseModel):
     """Request payload for POST /analyze-ticket.
 
     Accepts both canonical field names AND common aliases:
-      - `complaint_text`  OR  `complaint`
+      - `complaint`       OR  `complaint_text`
       - `customer_id`     is optional (defaults to "unknown")
       - `ticket_id`       is optional, echoed back in the response
+      - `language`        is optional
 
-    Unknown extra fields (language, channel, campaign_context, …)
+    Unknown extra fields (channel, campaign_context, …)
     are silently ignored so richer upstream payloads work without changes.
     """
 
@@ -160,11 +161,15 @@ class AnalyzeTicketRequest(BaseModel):
         default=None,
         description="Optional ticket identifier, echoed back in the response.",
     )
-    complaint_text: str = Field(
+    complaint: str = Field(
         ...,
         min_length=1,
         max_length=4000,
         description="Free-text customer complaint.",
+    )
+    language: Optional[str] = Field(
+        default=None,
+        description="Language of the complaint, e.g. en, bn, mixed.",
     )
     customer_id: str = Field(
         default="unknown",
@@ -182,16 +187,16 @@ class AnalyzeTicketRequest(BaseModel):
         """Handle field-name aliases before Pydantic validates individual fields.
 
         Mappings applied (only when the canonical name is absent):
-          complaint        → complaint_text
-          complaint_text   (canonical, used as-is)
+          complaint_text   → complaint
+          complaint        (canonical, used as-is)
         """
         if not isinstance(data, dict):
             return data
 
-        # Map `complaint` → `complaint_text` when only the alias is present.
-        if "complaint_text" not in data and "complaint" in data:
+        # Map `complaint_text` → `complaint` when only the alias is present.
+        if "complaint" not in data and "complaint_text" in data:
             data = dict(data)          # don't mutate the original
-            data["complaint_text"] = data.pop("complaint")
+            data["complaint"] = data.pop("complaint_text")
 
         return data
 
@@ -228,22 +233,24 @@ class AnalyzeTicketResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # --- Identification ---------------------------------------------------
     ticket_id: Optional[str] = Field(
         default=None,
         description="Echoed from the request ticket_id, if provided.",
     )
-
-    # --- Classification ---------------------------------------------------
-    case_type: CaseType
-    severity: Severity
-    department: Department
-
-    # --- Evidence (flat) --------------------------------------------------
-    evidence_verdict: EvidenceVerdict
     relevant_transaction_id: Optional[str] = Field(
         default=None,
         description="Best-matching transaction id, or None if not found.",
+    )
+    evidence_verdict: EvidenceVerdict
+    case_type: CaseType
+    severity: Severity
+    department: Department
+    agent_summary: str
+    recommended_next_action: str
+    customer_reply: str
+    human_review_required: bool = Field(
+        default=False,
+        description="True when the case must be reviewed by a human agent.",
     )
     confidence: float = Field(
         ...,
@@ -251,29 +258,9 @@ class AnalyzeTicketResponse(BaseModel):
         le=1.0,
         description="Rule-engine confidence score in [0, 1].",
     )
-
-    # --- Response content -------------------------------------------------
-    agent_summary: str
-    recommended_next_action: str
-    customer_reply: str
-
-    # --- Decision metadata ------------------------------------------------
-    human_review_required: bool = Field(
-        default=False,
-        description="True when the case must be reviewed by a human agent.",
-    )
     reason_codes: List[str] = Field(
         default_factory=list,
         description="Machine-readable codes explaining the pipeline decision.",
-    )
-    guardrails_applied: List[str] = Field(
-        default_factory=list,
-        description="Audit trail of safety rules the reply was scrubbed through.",
-    )
-    processing_time_ms: float = Field(
-        ...,
-        ge=0.0,
-        description="Wall-clock time spent inside the pipeline (excluding network).",
     )
 
 
