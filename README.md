@@ -1,3 +1,13 @@
+---
+title: SUST QueueStorm Investigator
+emoji: 🚀
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # QueueStorm Investigator
 
 An AI-powered support ticketing analysis engine built for the SUST CSE Carnival 2026. This service processes free-text customer complaints, compares them against transaction history, verifies evidence, and drafts safe, actionable replies for human agents.
