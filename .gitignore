@@ -1,0 +1,38 @@
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# --- Virtual environments --------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# --- Local secrets (never commit) -----------------------------------------
+.env
+.env.local
+.env.*.local
+
+# --- IDE / editor ---------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS noise --------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# --- Test / coverage artefacts --------------------------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# --- AI tooling / scaffolding artefacts -----------------------------------
+.puku/
+
+# --- Deprecated / typo files ---------------------------------------------
+varcel.json

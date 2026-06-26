@@ -1,0 +1,36 @@
+{
+  "complaint_text": "Hi, I think I sent 250 BDT to the wrong person yesterday. I typed 01923-555-111 by mistake instead of my brother's number. Also someone asked me for my PIN on a phone call claiming to be from your support team — is that real? Please reverse the transfer immediately.",
+  "customer_id": "cust_88421",
+  "transaction_history": [
+    {
+      "transaction_id": "tx_2025_0001",
+      "amount": 250.0,
+      "currency": "BDT",
+      "counterparty": "01923-555-111",
+      "timestamp": "2026-06-25T14:22:11+06:00",
+      "status": "success",
+      "channel": "mobile_app",
+      "type": "transfer"
+    },
+    {
+      "transaction_id": "tx_2025_0002",
+      "amount": 250.0,
+      "currency": "BDT",
+      "counterparty": "01923-555-111",
+      "timestamp": "2026-06-20T09:05:42+06:00",
+      "status": "success",
+      "channel": "mobile_app",
+      "type": "transfer"
+    },
+    {
+      "transaction_id": "tx_2025_0003",
+      "amount": 1500.0,
+      "currency": "BDT",
+      "counterparty": "merchant_supermart_22",
+      "timestamp": "2026-06-22T18:11:03+06:00",
+      "status": "success",
+      "channel": "pos",
+      "type": "payment"
+    }
+  ]
+}
