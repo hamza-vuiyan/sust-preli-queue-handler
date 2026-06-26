@@ -314,7 +314,7 @@ _DRAFTERS = {
     CaseType.WRONG_TRANSFER:                 _draft_wrong_transfer,
     CaseType.PAYMENT_FAILED:                 _draft_payment_failed,
     CaseType.REFUND_REQUEST:                 _draft_refund_request,
-    CaseType.DUPLICATE_PAYMENT:              _draft_duplicate_payment,
+    CaseType.DUPLICATE_PAYMENT:              _dwraft_duplicate_payment,
     CaseType.MERCHANT_SETTLEMENT_DELAY:      _draft_merchant_delay,
     CaseType.AGENT_CASH_IN_ISSUE:            _draft_agent_cashin,
     CaseType.PHISHING_OR_SOCIAL_ENGINEERING: _draft_phishing,

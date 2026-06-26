@@ -176,9 +176,9 @@ class AnalyzeTicketRequest(BaseModel):
         description="Internal customer identifier. Optional — defaults to 'unknown'.",
     )
     transaction_history: List[Transaction] = Field(
-        ...,
+        default_factory=list,
         max_length=500,
-        description="Recent transactions to cross-reference against the complaint.",
+        description="Recent transactions to cross-reference against the complaint. Optional — can be an empty list.",
     )
 
     @model_validator(mode="before")
