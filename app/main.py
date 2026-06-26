@@ -28,7 +28,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.logic import init_llm_client, run_pipeline
+from app.pipeline import init_llm_client, run_pipeline
 from app.safety import apply_safety_guardrails
 from app.schemas import (
     AnalyzeTicketRequest,
